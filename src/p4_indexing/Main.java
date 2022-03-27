@@ -1,130 +1,59 @@
 package p4_indexing;
 
 import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.PrintWriter;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
-import java.util.Scanner;
 import java.util.Set;
-import java.util.TreeSet;
 
 public class Main {
 	public static final String IN_FILE_EXTENSION = ".txt";
-
-	private File inFolder;
-	private File outFolder;
-	private int numCharPage;
-
-	public Main(File inFolder, File outFolder, int numCharPage) {
-		this.inFolder = inFolder;
-		this.outFolder = outFolder;
-		this.numCharPage = numCharPage;
-	}
+	public static final String OUT_FILE_EXTENSION = ".result.txt";
 
 	// do all the work
-	public void run() {
-		File inDir = this.inFolder;
+	public static void run(File inFolder, File outFolder, int numCharPage) {
 		
-		File[] files = inDir.listFiles((file)->{
+		File[] files = inFolder.listFiles((file)->{
 			return file.exists() && file.isFile() && checkExtention(file, "txt");
 		});
 		
 		// first make sure the output folder exists and is a directory
-		if(!this.outFolder.exists()) {
-			this.outFolder.mkdir();
+		if(!outFolder.exists()) {
+			outFolder.mkdir();
 		}
-		if(!this.outFolder.exists() || !this.outFolder.isDirectory()) {
+		if(!outFolder.exists() || !outFolder.isDirectory()) {
 			String msg = "Could not create out directory";
 			System.err.println(msg);
 			throw new RuntimeException(msg);
 		}
 		
 		// clean the output folder
-		Arrays.stream(this.outFolder.listFiles()).forEach(file->file.delete());
+		Arrays.stream(outFolder.listFiles()).forEach(file->file.delete());
 		
 		long startTime = System.nanoTime();
+		
+		// first build and write my indexes
 		for(File file: files) {
-			processFile(file);
+			// create a new indexBuilder
+			IndexBuilder builder = new IndexBuilder(file, numCharPage);
+			// run the index builder
+			builder.run();
+			Map<String, Set<Integer>> index = builder.getResultIndex();
+			
+			// save the index
+			String inputFileName =  file.getName();
+			String outputFileName =  
+					inputFileName.substring(0, inputFileName.length() - IN_FILE_EXTENSION.length()) + 
+					OUT_FILE_EXTENSION;
+			File outputFile = new File(outFolder, outputFileName);
+			(new IndexWriter(outputFile, index)).run();
 		}
+		
 		long finishTime = System.nanoTime();
 		System.out.printf("Total Running time is %.4f (ms)\n", (finishTime-startTime)/1.0e6);
 	}
 
-	private boolean checkExtention(File file, String string) {
+	private static boolean checkExtention(File file, String string) {
 		return file.getName().endsWith(IN_FILE_EXTENSION);
-	}
-
-	private String outputFileName(File inputFile) {
-		String path =  inputFile.getName();
-		return path.substring(0, path.length() - IN_FILE_EXTENSION.length()) + ".results";
-	}
-	
-	private Map<String, List<Integer>> buildIndex(Scanner in) {
-		Map<String, Set<Integer>> index = new HashMap<>();
-		
-		int pageNumber = 1;
-		int numCharOnPage = 0;
-		
-		while(in.hasNext()) {
-			String word = in.next().toLowerCase().trim();
-			int wordLen = word.length();
-			
-			if(wordLen + numCharOnPage > this.numCharPage) {
-				pageNumber++;
-				numCharOnPage = 0;
-			}
-			
-			if(!index.containsKey(word)) {
-				index.put(word, new TreeSet<>());
-			}
-			
-			index.get(word).add(pageNumber);
-			numCharOnPage += wordLen;
-		}
-		
-		Map<String, List<Integer>> indexAsList = new HashMap<>();
-		for(String word: index.keySet()) {
-			ArrayList<Integer> pageList = new ArrayList<>(index.get(word));
-			indexAsList.put(word, pageList);
-		}
-		return indexAsList;
-	}
-	
-	private void processFile(File inFile) {
-		System.out.println("processing " + inFile.getName());
-		
-		try(
-				Scanner in = new Scanner(inFile);
-				PrintWriter out = new PrintWriter(
-						new File(this.outFolder.getAbsolutePath(), outputFileName(inFile)))
-		) {
-			// build index
-			Map<String, List<Integer>> index = buildIndex(in);
-
-			// write index to a file
-			List<String> wordList = new ArrayList<>(index.keySet());
-			Collections.sort(wordList);
-			for(String word: wordList) {
-				StringBuilder indexLineBuilder = new StringBuilder();
-				indexLineBuilder.append(word + " ");
-				for(int pageNumber: index.get(word)) {
-					indexLineBuilder.append(pageNumber + ",");
-				}
-				String indexLine = indexLineBuilder.toString();
-				if(indexLine.endsWith(",")) indexLine = indexLine.substring(0, indexLine.length() -1);
-				out.println(indexLine);
-			}
-			
-		} catch (Exception e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
 	}
 
 	public static void main(String[] args) {
@@ -137,7 +66,7 @@ public class Main {
 				throw new Exception();
 			}
 			
-			(new Main(inFolder, outFolder, numCharPage)).run();
+			run(inFolder, outFolder, numCharPage);
 		} catch (Exception e) {
 			System.err.println("Usage!!");
 		}
